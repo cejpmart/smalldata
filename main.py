@@ -26,27 +26,38 @@ class DB:
         c.execute('SELECT * FROM `%s` LIMIT ?' % (dataset), (limit,))
         return c.fetchall()
 
+import mysql.connector
+
 class DB_MySQL:
     def __init__(self, host, user, password, db):
-        import mysql.connector
-
         self.conn = mysql.connector.connect(host=host, user=user, password=password, database=db)
 
+    def cursor(self, *args, **kwargs):
+        try:
+            return self.conn.cursor(*args, **kwargs)
+        except mysql.connector.errors.OperationalError:
+            self.conn.reconnect()
+            return self.conn.cursor(*args, **kwargs)
+
     def init_dataset(self, dataset, type):
-        c = self.conn.cursor()
+        c = self.cursor()
         c.execute('CREATE TABLE IF NOT EXISTS `%s` (timestamp TIMESTAMP, value %s)' % (dataset, type))
 
     def insert_into_dataset(self, dataset, value):
-        c = self.conn.cursor()
+        c = self.cursor()
         c.execute('INSERT INTO `' + dataset + '` VALUES (CURRENT_TIMESTAMP(), %s)', (value,))
         self.conn.commit()
 
     def get_dataset(self, dataset, limit):
-        c = self.conn.cursor(dictionary=True)
+        c = self.cursor(dictionary=True)
         c.execute('SELECT * FROM `' + dataset + '` LIMIT %s', (limit,))
         return c.fetchall()
 
 class MyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
+    def __init__(self, request, client_address, server):
+        http.server.BaseHTTPRequestHandler.__init__(self, request, client_address, server)
+        self.timeout = 10
+
     def do_GET(self):
         path = self.path[1:]
         dataset = self.server.db.get_dataset(path, 100)
@@ -75,10 +86,11 @@ class MyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
 def run(db, server_class=http.server.HTTPServer, handler_class=MyHTTPRequestHandler):
     server_address = ('', 8000)
-    with server_class(server_address, handler_class) as httpd:
-        httpd.db = db
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        httpd.server_close()
+    httpd = server_class(server_address, handler_class)
+    httpd.db = db
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    httpd.server_close()
+
