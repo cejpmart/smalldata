@@ -2,6 +2,8 @@
 
 import http.server
 
+import credentials
+
 TYPE_REAL = 'REAL'
 TYPE_TEXT = 'TEXT'
 
@@ -76,10 +78,28 @@ class MyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path[1:]
-
         body = self.rfile.read(int(self.headers.get('Content-Length')))
-        value = body.decode()
-        self.server.db.insert_into_dataset(path, value)
+
+        if path == 'BULK':
+            # 1/Status,2018-03-23 02:13:30,OK
+            # 1/BatteryVoltage,2018-03-23 02:13:30,3.101 \n
+            # 1/Temp,2018-03-23 02:13:30,21.20 \n
+            # (time is always UTC)
+
+            print('BULK DATA', len(body), body)
+            lines = body.decode().split('\n')
+
+            for line in lines:
+                line = line.strip()
+
+                if line == '' or line[0] == '#':
+                    continue
+
+                [path, timestamp, value] = line.split(',')
+                self.server.db.insert_into_dataset(path, value)
+        else:
+            value = body.decode()
+            self.server.db.insert_into_dataset(path, value)
 
         self.send_response(200)
         self.end_headers()
@@ -94,3 +114,12 @@ def run(db, server_class=http.server.HTTPServer, handler_class=MyHTTPRequestHand
         pass
     httpd.server_close()
 
+db = DB_MySQL(credentials.HOST, credentials.USER, credentials.PASSWORD, credentials.DB)
+db.init_dataset('1/BatteryVoltage', TYPE_REAL)
+db.init_dataset('1/Humidity', TYPE_REAL)
+db.init_dataset('1/Temp', TYPE_REAL)
+db.init_dataset('1/TempInternal', TYPE_REAL)
+db.init_dataset('1/Pressure', TYPE_REAL)
+
+db.init_dataset('1/Status', TYPE_TEXT)
+run(db)
