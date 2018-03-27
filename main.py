@@ -3,6 +3,7 @@
 import http.server
 
 import credentials
+from db_mysql import DB_MySQL
 
 TYPE_REAL = 'REAL'
 TYPE_TEXT = 'TEXT'
@@ -26,33 +27,6 @@ class DB:
     def get_dataset(self, dataset, limit):
         c = self.conn.cursor()
         c.execute('SELECT * FROM `%s` LIMIT ?' % (dataset), (limit,))
-        return c.fetchall()
-
-import mysql.connector
-
-class DB_MySQL:
-    def __init__(self, host, user, password, db):
-        self.conn = mysql.connector.connect(host=host, user=user, password=password, database=db)
-
-    def cursor(self, *args, **kwargs):
-        try:
-            return self.conn.cursor(*args, **kwargs)
-        except mysql.connector.errors.OperationalError:
-            self.conn.reconnect()
-            return self.conn.cursor(*args, **kwargs)
-
-    def init_dataset(self, dataset, type):
-        c = self.cursor()
-        c.execute('CREATE TABLE IF NOT EXISTS `%s` (timestamp TIMESTAMP, value %s)' % (dataset, type))
-
-    def insert_into_dataset(self, dataset, value):
-        c = self.cursor()
-        c.execute('INSERT INTO `' + dataset + '` VALUES (CURRENT_TIMESTAMP(), %s)', (value,))
-        self.conn.commit()
-
-    def get_dataset(self, dataset, limit):
-        c = self.cursor(dictionary=True)
-        c.execute('SELECT * FROM `' + dataset + '` LIMIT %s', (limit,))
         return c.fetchall()
 
 class MyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -97,6 +71,8 @@ class MyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
                 [path, timestamp, value] = line.split(',')
                 self.server.db.insert_into_dataset(path, value)
+        elif path == 'ECHO':
+            print('ECHO DATA', len(body), body)
         else:
             value = body.decode()
             self.server.db.insert_into_dataset(path, value)
